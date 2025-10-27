@@ -18,10 +18,12 @@ export class GdmLiveAudio extends LitElement {
 
   private client: GoogleGenAI;
   private session: Session;
+  private sessionPromise: Promise<Session>;
+  // FIX: Cast window to any to support webkitAudioContext for older browsers without TypeScript errors.
   private inputAudioContext = new (window.AudioContext ||
-    window.webkitAudioContext)({sampleRate: 16000});
+    (window as any).webkitAudioContext)({sampleRate: 16000});
   private outputAudioContext = new (window.AudioContext ||
-    window.webkitAudioContext)({sampleRate: 24000});
+    (window as any).webkitAudioContext)({sampleRate: 24000});
   @state() inputNode = this.inputAudioContext.createGain();
   @state() outputNode = this.outputAudioContext.createGain();
   private nextStartTime = 0;
@@ -89,7 +91,7 @@ export class GdmLiveAudio extends LitElement {
     this.initAudio();
 
     this.client = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: process.env.API_KEY,
     });
 
     this.outputNode.connect(this.outputAudioContext.destination);
@@ -101,7 +103,8 @@ export class GdmLiveAudio extends LitElement {
     const model = 'gemini-2.5-flash-native-audio-preview-09-2025';
 
     try {
-      this.session = await this.client.live.connect({
+      // FIX: Store session promise to be used in audio process callback.
+      this.sessionPromise = this.client.live.connect({
         model: model,
         callbacks: {
           onopen: () => {
@@ -154,11 +157,15 @@ export class GdmLiveAudio extends LitElement {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: {prebuiltVoiceConfig: {voiceName: 'Orus'}},
+            // FIX: 'Orus' is not a valid voice. Switched to 'Zephyr' from the documentation.
+            voiceConfig: {prebuiltVoiceConfig: {voiceName: 'Zephyr'}},
             // languageCode: 'en-GB'
           },
         },
       });
+
+      this.session = await this.sessionPromise;
+
     } catch (e) {
       console.error(e);
     }
@@ -194,7 +201,7 @@ export class GdmLiveAudio extends LitElement {
       );
       this.sourceNode.connect(this.inputNode);
 
-      const bufferSize = 256;
+      const bufferSize = 4096;
       this.scriptProcessorNode = this.inputAudioContext.createScriptProcessor(
         bufferSize,
         1,
@@ -207,7 +214,10 @@ export class GdmLiveAudio extends LitElement {
         const inputBuffer = audioProcessingEvent.inputBuffer;
         const pcmData = inputBuffer.getChannelData(0);
 
-        this.session.sendRealtimeInput({media: createBlob(pcmData)});
+        // FIX: Use session promise to send data to avoid race conditions.
+        this.sessionPromise.then((session) => {
+          session.sendRealtimeInput({media: createBlob(pcmData)});
+        });
       };
 
       this.sourceNode.connect(this.scriptProcessorNode);

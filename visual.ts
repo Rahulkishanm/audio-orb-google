@@ -101,14 +101,16 @@ export class GdmLiveAudioVisuals extends LitElement {
     requestAnimationFrame(() => this.visualize());
   }
 
-  private firstUpdated() {
+  // FIX: LitElement lifecycle methods should be protected, not private.
+  protected firstUpdated() {
     this.canvas = this.shadowRoot!.querySelector('canvas');
     this.canvas.width = 400;
     this.canvas.height = 400;
     this.canvasCtx = this.canvas.getContext('2d');
   }
 
-  private render() {
+  // FIX: The render method must have protected visibility to correctly override the LitElement base class method.
+  protected render() {
     return html`<canvas></canvas>`;
   }
 }
